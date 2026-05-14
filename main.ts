@@ -1,11 +1,8 @@
-// KnutsonFPS Backend — Deno Deploy Edition
-// No dependencies, no Express, no NPM, no Railway issues.
-
-// -------------------- STATE --------------------
+// main.ts
+// KnutsonFPS backend — single global lobby, old behaviour
 
 interface Player {
   id: string;
-  lobby: string;
   x: number;
   y: number;
   z: number;
@@ -15,55 +12,14 @@ interface Player {
 }
 
 const players: Record<string, Player> = {};
-const lobbies: Record<string, { code: string; createdAt: number }> = {};
-const killfeed: Record<string, Array<{ attacker: string; target: string; time: number }>> = {};
+const killfeed: Array<{ attacker: string; target: string; time: number }> = [];
 
 function now() {
   return Date.now();
 }
 
-// -------------------- HELPERS --------------------
-
-function generateLobbyCode() {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 4; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
-
-function ensureLobbyExists(code: string) {
-  if (!lobbies[code]) {
-    lobbies[code] = { code, createdAt: now() };
-  }
-  if (!killfeed[code]) {
-    killfeed[code] = [];
-  }
-}
-
-function getLobbyPlayers(code: string) {
-  return Object.values(players).filter((p) => p.lobby === code);
-}
-
-function ensureUniqueName(baseName: string, lobby: string) {
-  const existing = new Set(getLobbyPlayers(lobby).map((p) => p.name));
-
-  if (!existing.has(baseName)) return baseName;
-
-  let i = 2;
-  let candidate = `${baseName}${i}`;
-  while (existing.has(candidate)) {
-    i++;
-    candidate = `${baseName}${i}`;
-  }
-  return candidate;
-}
-
-// -------------------- AFK CLEANUP --------------------
-
+// AFK cleanup (60s)
 const AFK_TIMEOUT_MS = 60_000;
-
 setInterval(() => {
   const cutoff = now() - AFK_TIMEOUT_MS;
   for (const id in players) {
@@ -72,8 +28,6 @@ setInterval(() => {
     }
   }
 }, 10_000);
-
-// -------------------- HTTP SERVER --------------------
 
 async function readJson(req: Request) {
   try {
@@ -87,70 +41,50 @@ async function handler(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
 
-  // -------------------- ROOT --------------------
-  if (path === "/") {
+  // Health
+  if (path === "/" && req.method === "GET") {
     return new Response("KnutsonFPS Deno backend running", { status: 200 });
   }
 
-  // -------------------- FIND LOBBY --------------------
-  if (path === "/find_lobby" && req.method === "POST") {
-    for (const code in lobbies) {
-      if (getLobbyPlayers(code).length < 16) {
-        return Response.json({ lobby: code });
-      }
-    }
-    const code = generateLobbyCode();
-    ensureLobbyExists(code);
-    return Response.json({ lobby: code });
-  }
-
-  // -------------------- UPDATE --------------------
+  // ---- UPDATE ----
+  // Body: { id, x, y, z, name, hp }
   if (path === "/update" && req.method === "POST") {
-    const { id, lobby, x, y, z, name, hp } = await readJson(req);
+    const { id, x, y, z, name, hp } = await readJson(req);
 
-    if (!id || !lobby) {
-      return Response.json({ error: "id and lobby required" }, { status: 400 });
+    if (!id) {
+      return Response.json({ error: "id required" }, { status: 400 });
     }
 
-    ensureLobbyExists(lobby);
-
-    let finalName = name || "Player";
-
-    if (!players[id] || players[id].lobby !== lobby) {
-      finalName = ensureUniqueName(finalName, lobby);
-    } else {
-      finalName = name || players[id].name;
-    }
+    const prev = players[id];
+    const finalName = (name && String(name).slice(0, 16)) || prev?.name || "Player";
 
     players[id] = {
       id,
-      lobby,
       x: Number(x) || 0,
       y: Number(y) || 0,
       z: Number(z) || 0,
       name: finalName,
-      hp: typeof hp === "number" ? hp : players[id]?.hp ?? 100,
-      lastUpdate: now(),
+      hp: typeof hp === "number" ? hp : prev?.hp ?? 100,
+      lastUpdate: now()
     };
 
     return Response.json({ ok: true, name: finalName });
   }
 
-  // -------------------- GET STATE --------------------
+  // ---- GET_STATE ----
+  // Body: {}  (no lobby, returns all players)
   if (path === "/get_state" && req.method === "POST") {
-    const { lobby } = await readJson(req);
-    if (!lobby) {
-      return Response.json({ error: "lobby required" }, { status: 400 });
-    }
-    return Response.json(getLobbyPlayers(lobby));
+    const list = Object.values(players);
+    return Response.json(list);
   }
 
-  // -------------------- DAMAGE --------------------
+  // ---- DAMAGE ----
+  // Body: { attacker, target, amount }
   if (path === "/damage" && req.method === "POST") {
-    const { attacker, target, amount, lobby } = await readJson(req);
+    const { attacker, target, amount } = await readJson(req);
 
-    if (!attacker || !target || !lobby) {
-      return Response.json({ error: "attacker, target, lobby required" }, { status: 400 });
+    if (!attacker || !target) {
+      return Response.json({ error: "attacker and target required" }, { status: 400 });
     }
 
     const a = players[attacker];
@@ -160,38 +94,31 @@ async function handler(req: Request): Promise<Response> {
       return Response.json({ ok: false, reason: "attacker or target missing" });
     }
 
-    if (a.lobby !== lobby || t.lobby !== lobby) {
-      return Response.json({ ok: false, reason: "different lobby" });
-    }
-
     const dmg = Number(amount) || 0;
     t.hp = Math.max(0, t.hp - dmg);
 
     if (t.hp <= 0) {
-      ensureLobbyExists(lobby);
-      killfeed[lobby].push({
+      killfeed.push({
         attacker: a.name,
         target: t.name,
-        time: now(),
+        time: now()
       });
+      // optional: delete players[target];
     }
 
     return Response.json({ ok: true, hp: t.hp });
   }
 
-  // -------------------- FEED --------------------
+  // ---- FEED ----
+  // Body: {}
   if (path === "/feed" && req.method === "POST") {
-    const { lobby } = await readJson(req);
-    if (!lobby) {
-      return Response.json({ error: "lobby required" }, { status: 400 });
-    }
-    ensureLobbyExists(lobby);
-    return Response.json(killfeed[lobby].slice(-10));
+    const events = killfeed.slice(-10);
+    return Response.json(events);
   }
 
-  // -------------------- DEBUG --------------------
-  if (path === "/debug/state") {
-    return Response.json({ players, lobbies, killfeed });
+  // ---- DEBUG ----
+  if (path === "/debug/state" && req.method === "GET") {
+    return Response.json({ players, killfeed });
   }
 
   return new Response("Not found", { status: 404 });
