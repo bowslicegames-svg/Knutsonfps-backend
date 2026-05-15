@@ -27,6 +27,7 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const path = url.pathname;
 
+  // UPDATE PLAYER
   if (path === "/update" && req.method === "POST") {
     const { id, x, y, z, name, hp } = await readJson(req);
 
@@ -45,10 +46,12 @@ Deno.serve(async (req) => {
     return Response.json({ ok: true });
   }
 
-  if (path === "/get_state" && req.method === "POST") {
+  // GET ALL PLAYERS
+  if (path === "/get_state") {
     return Response.json(Object.values(players));
   }
 
+  // DAMAGE
   if (path === "/damage" && req.method === "POST") {
     const { attacker, target, amount } = await readJson(req);
     if (!players[target]) return Response.json({ ok: false });
@@ -66,10 +69,12 @@ Deno.serve(async (req) => {
     return Response.json({ ok: true });
   }
 
-  if (path === "/feed" && req.method === "POST") {
+  // KILLFEED
+  if (path === "/feed") {
     return Response.json(killfeed.slice(-10));
   }
 
+  // DEBUG
   if (path === "/debug/state") {
     return Response.json({ players, killfeed });
   }
