@@ -1,7 +1,7 @@
 {
   "name": "knutsonfps-backend",
   "version": "1.0.0",
-  "description": "FPS backend on Fly.io (Node.js + WebSockets)",
+  "description": "FPS backend on Render",
   "main": "main.js",
   "scripts": {
     "start": "node main.js"
@@ -9,8 +9,5 @@
   "dependencies": {
     "express": "^4.19.2",
     "ws": "^8.17.0"
-  },
-  "engines": {
-    "node": ">=18"
   }
 }
