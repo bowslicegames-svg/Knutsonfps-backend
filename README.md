@@ -1,19 +1,9 @@
-# KnutsonFPS Minimal Backend (Node.js + Railway)
+# knutsonfps-backend (Fly.io)
 
-This is the minimal backend for KnutsonFPS.
-
-## Features
-- Player position sync
-- HP sync
-- Server-side damage
-- Server-side grenade hits
-- Killfeed
-- Idle cleanup
-- Fully in-memory (fastest)
+Node.js + WebSocket backend for an FPS-style game, deployed on Fly.io.
 
 ## Run locally
+
+```bash
 npm install
 npm start
-
-## Deploy to Railway
-Push to GitHub → Create Railway project → Deploy
