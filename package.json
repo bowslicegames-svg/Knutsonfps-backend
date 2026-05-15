@@ -1,7 +1,6 @@
 {
   "name": "knutsonfps-backend",
   "version": "1.0.0",
-  "description": "FPS backend on Render",
   "main": "main.js",
   "scripts": {
     "start": "node main.js"
