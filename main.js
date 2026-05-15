@@ -1,4 +1,3 @@
-// server.js
 import express from "express";
 import http from "http";
 import { WebSocketServer } from "ws";
@@ -8,20 +7,21 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// in‑memory player store
-const players = {}; // { id: { x,y,z,rot, lastSeen } }
+// In-memory player store
+// players[id] = { x, y, z, rot, lastSeen }
+const players = {};
 
-// simple health check
+// Basic health check
 app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
 
-// state debug endpoint used by your client
+// State endpoint used by your client
 app.get("/debug/state", (req, res) => {
   res.json({ players });
 });
 
-// clean up stale players every 30s (optional but nice)
+// Optional: clean up stale players
 setInterval(() => {
   const now = Date.now();
   const timeoutMs = 30_000;
@@ -32,11 +32,10 @@ setInterval(() => {
   }
 }, 30_000);
 
-// websocket handling
+// WebSocket handling
 wss.on("connection", (ws) => {
   const id = crypto.randomUUID();
 
-  // create initial entry
   players[id] = {
     x: 0,
     y: 0.5,
@@ -45,7 +44,7 @@ wss.on("connection", (ws) => {
     lastSeen: Date.now()
   };
 
-  // tell client its id
+  // Tell client its ID
   ws.send(JSON.stringify({ type: "welcome", id }));
 
   ws.on("message", (data) => {
