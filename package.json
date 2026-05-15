@@ -1,12 +1,10 @@
 {
-  "name": "knutsonfps-backend",
-  "version": "1.0.0",
-  "main": "main.js",
+  "type": "module",
   "scripts": {
-    "start": "node main.js"
+    "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "ws": "^8.17.0"
+    "express": "^4.19.0",
+    "ws": "^8.16.0"
   }
 }
