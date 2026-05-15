@@ -1,7 +1,7 @@
 {
   "name": "knutsonfps-backend",
   "version": "1.0.0",
-  "description": "Backend for KnutsonFPS (HTTP + WebSocket state server)",
+  "description": "Backend for KnutsonFPS",
   "main": "main.js",
   "type": "module",
   "scripts": {
