@@ -7,32 +7,25 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// In-memory player store
-// players[id] = { x, y, z, rot, lastSeen }
 const players = {};
 
-// Basic health check
 app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
 
-// State endpoint used by your client
 app.get("/debug/state", (req, res) => {
   res.json({ players });
 });
 
-// Optional: clean up stale players
 setInterval(() => {
   const now = Date.now();
-  const timeoutMs = 30_000;
   for (const id in players) {
-    if (now - players[id].lastSeen > timeoutMs) {
+    if (now - players[id].lastSeen > 30000) {
       delete players[id];
     }
   }
-}, 30_000);
+}, 5000);
 
-// WebSocket handling
 wss.on("connection", (ws) => {
   const id = crypto.randomUUID();
 
@@ -44,22 +37,17 @@ wss.on("connection", (ws) => {
     lastSeen: Date.now()
   };
 
-  // Tell client its ID
   ws.send(JSON.stringify({ type: "welcome", id }));
 
   ws.on("message", (data) => {
     let msg;
-    try {
-      msg = JSON.parse(data.toString());
-    } catch {
-      return;
-    }
+    try { msg = JSON.parse(data.toString()); } catch { return; }
 
     if (msg.type === "update" && players[id]) {
-      players[id].x = msg.x ?? players[id].x;
-      players[id].y = msg.y ?? players[id].y;
-      players[id].z = msg.z ?? players[id].z;
-      players[id].rot = msg.rot ?? players[id].rot;
+      players[id].x = msg.x;
+      players[id].y = msg.y;
+      players[id].z = msg.z;
+      players[id].rot = msg.rot;
       players[id].lastSeen = Date.now();
     }
   });
@@ -69,8 +57,7 @@ wss.on("connection", (ws) => {
   });
 });
 
-// Render uses PORT env
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log("Server listening on", PORT);
+  console.log("Backend running on port", PORT);
 });
