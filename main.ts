@@ -1,91 +1,129 @@
-const kv = await Deno.openKv();
+interface Player {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  name: string;
+  hp: number;
+  lastUpdate: number;
+}
 
-// UPDATE PLAYER
-async function updatePlayer(data: any) {
-  const id = data.id;
-  if (!id) return;
+interface KillEvent {
+  attacker: string;
+  target: string;
+  time: number;
+}
 
-  const player = {
-    id,
-    x: Number(data.x) || 0,
-    y: Number(data.y) || 0,
-    z: Number(data.z) || 0,
-    name: data.name || "Player",
-    hp: Number(data.hp) || 100,
-    lastUpdate: Date.now()
+const kv = await Deno.openKv(); // uses the attached KV instance
+
+async function readJson(req: Request) {
+  try {
+    return await req.json();
+  } catch {
+    return {};
+  }
+}
+
+// ---- PLAYERS ----
+
+async function savePlayer(p: Player) {
+  await kv.set(["players", p.id], p);
+}
+
+async function getPlayer(id: string): Promise<Player | null> {
+  const res = await kv.get<Player>(["players", id]);
+  return res.value ?? null;
+}
+
+async function listPlayers(): Promise<Player[]> {
+  const out: Player[] = [];
+  for await (const entry of kv.list<Player>({ prefix: ["players"] })) {
+    out.push(entry.value);
+  }
+  return out;
+}
+
+// ---- KILLFEED ----
+
+async function addKill(attackerName: string, targetName: string) {
+  const ev: KillEvent = {
+    attacker: attackerName,
+    target: targetName,
+    time: Date.now()
   };
-
-  await kv.set(["players", id], player);
+  await kv.set(["killfeed", ev.time, Math.random()], ev);
 }
 
-// GET ALL PLAYERS
-async function getPlayers() {
-  const list = [];
-  for await (const entry of kv.list({ prefix: ["players"] })) {
-    list.push(entry.value);
+async function listKillfeed(limit = 10): Promise<KillEvent[]> {
+  const out: KillEvent[] = [];
+  for await (const entry of kv.list<KillEvent>({ prefix: ["killfeed"] })) {
+    out.push(entry.value);
   }
-  return list;
+  // newest last; keep last N
+  return out.slice(-limit);
 }
 
-// APPLY DAMAGE
-async function applyDamage(attacker: string, target: string, amount: number) {
-  const key = ["players", target];
-  const entry = await kv.get(key);
-  if (!entry.value) return;
+// ---- HTTP HANDLER ----
 
-  const p = entry.value;
-  p.hp = Math.max(0, p.hp - amount);
-
-  await kv.set(key, p);
-
-  if (p.hp <= 0) {
-    await kv.set(["killfeed", Date.now()], {
-      attacker,
-      target: p.name,
-      time: Date.now()
-    });
-  }
-}
-
-// GET KILLFEED
-async function getKillfeed() {
-  const events = [];
-  for await (const entry of kv.list({ prefix: ["killfeed"] })) {
-    events.push(entry.value);
-  }
-  return events.slice(-10);
-}
-
-// SERVER
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const path = url.pathname;
 
+  // UPDATE PLAYER
   if (path === "/update" && req.method === "POST") {
-    const data = await req.json();
-    await updatePlayer(data);
+    const { id, x, y, z, name, hp } = await readJson(req);
+    if (!id) return Response.json({ error: "missing id" }, { status: 400 });
+
+    const player: Player = {
+      id,
+      x: Number(x) || 0,
+      y: Number(y) || 0,
+      z: Number(z) || 0,
+      name: name || "Player",
+      hp: Number(hp) || 100,
+      lastUpdate: Date.now()
+    };
+
+    await savePlayer(player);
     return Response.json({ ok: true });
   }
 
+  // GET ALL PLAYERS
   if (path === "/get_state") {
-    const players = await getPlayers();
+    const players = await listPlayers();
     return Response.json(players);
   }
 
+  // APPLY DAMAGE
   if (path === "/damage" && req.method === "POST") {
-    const { attacker, target, amount } = await req.json();
-    await applyDamage(attacker, target, Number(amount));
+    const { attacker, target, amount } = await readJson(req);
+    if (!target) return Response.json({ ok: false, error: "missing target" });
+
+    const p = await getPlayer(target);
+    if (!p) return Response.json({ ok: false, error: "no such player" });
+
+    const dmg = Number(amount) || 0;
+    p.hp = Math.max(0, p.hp - dmg);
+    await savePlayer(p);
+
+    if (p.hp <= 0) {
+      const attackerPlayer = attacker ? await getPlayer(attacker) : null;
+      await addKill(attackerPlayer?.name || "Unknown", p.name);
+    }
+
     return Response.json({ ok: true });
   }
 
+  // KILLFEED
   if (path === "/feed") {
-    const feed = await getKillfeed();
+    const feed = await listKillfeed(10);
     return Response.json(feed);
   }
 
+  // DEBUG
   if (path === "/debug/state") {
-    const players = await getPlayers();
-    const feed = await getKillfeed();
+    const players = await listPlayers();
+    const feed = await listKillfeed(20);
     return Response.json({ players, feed });
   }
 
