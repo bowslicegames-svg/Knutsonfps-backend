@@ -3,7 +3,7 @@ const kv = await Deno.openKv();
 Deno.serve(async (req) => {
   const url = new URL(req.url);
 
-  // Parse JSON safely
+  // Safe JSON parse
   let body = {};
   try { body = await req.json(); } catch {}
 
